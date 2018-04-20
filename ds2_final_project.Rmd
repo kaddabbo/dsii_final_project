@@ -1,0 +1,64 @@
+---
+title: "final_project_airbnb"
+author: "Kwangmin Kim"
+date: "April 19, 2018"
+output: html_document
+---
+##clean and tidy the airbnb data
+
+```{r}
+library(tidyverse)
+library(janitor)
+library(stringr)
+library(forcats)
+library(viridis)
+library(plotly)
+airbnb_data = read_csv("./data/nyc_airbnb.zip") %>%
+  clean_names()%>%
+  mutate(rating = review_scores_location / 2)%>%
+  select(boro = neighbourhood_group, neighbourhood, rating, number_of_reviews, price, room_type, reviews_per_month, availability_365, calculated_host_listings_count, name, latitude, longitude)%>%
+  filter(!is.na(rating),
+         price %in% 30:500)
+
+#plotly scatter plot
+
+airbnb_data %>%
+  mutate(text_label = str_c("Price: $", price, '\nRating: ', rating, '\nName: ', name)) %>% 
+  plot_ly(x = ~longitude, y = ~latitude, type = "scatter", mode = "markers",
+          alpha = 0.5, 
+          color = ~price,
+          text = ~text_label)
+
+common_neighborhoods =
+  airbnb_data %>% 
+  count(neighbourhood, sort = TRUE) %>% 
+  top_n(8) %>% 
+  select(neighbourhood)
+
+inner_join(airbnb_data, common_neighborhoods,
+             by = "neighbourhood") %>% 
+  mutate(neighbourhood = fct_reorder(neighbourhood, price)) %>% 
+  plot_ly(y = ~price, color = ~neighbourhood, type = "box",
+          colors = "Set2")
+
+airbnb_data %>% 
+  count(neighbourhood) %>% 
+  mutate(neighbourhood = fct_reorder(neighbourhood, n)) %>% 
+  plot_ly(x = ~neighbourhood, y = ~n, color = ~neighbourhood, type = "bar")
+
+```
+
+```{r}
+
+library(ISLR)
+library(caret)
+library(MASS)
+library(corrplot)
+
+corr<-airbnb_data%>%
+  select(-boro , -neighbourhood, -room_type, -name, -latitude, -longitude)
+corrplot(cor(corr), method="shade",shade.col=NA, tl.col="black", tl.srt=45)
+
+airbnb_data
+```
+
