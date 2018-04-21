@@ -7,12 +7,14 @@ output: html_document
 ##clean and tidy the airbnb data
 
 ```{r}
+rm(list=ls())
 library(tidyverse)
 library(janitor)
 library(stringr)
 library(forcats)
 library(viridis)
 library(plotly)
+library(dplyr)
 airbnb_data = read_csv("./data/nyc_airbnb.zip") %>%
   clean_names()%>%
   mutate(rating = review_scores_location / 2)%>%
@@ -49,8 +51,6 @@ airbnb_data %>%
 ```
 
 ```{r}
-
-library(ISLR)
 library(caret)
 library(MASS)
 library(corrplot)
@@ -59,6 +59,78 @@ corr<-airbnb_data%>%
   select(-boro , -neighbourhood, -room_type, -name, -latitude, -longitude)
 corrplot(cor(corr), method="shade",shade.col=NA, tl.col="black", tl.srt=45)
 
-airbnb_data
+View(airbnb_data)
+```
+
+```{r}
+pcr.data=airbnb_data%>%
+  select(-name, -boro , -neighbourhood, -room_type, -latitude, -longitude, price, calculated_host_listings_count, number_of_reviews, reviews_per_month, availability_365)
+
+pr.out <- prcomp(pcr.data, scale=TRUE)
+names(pr.out)
+
+pr.out$center
+# apply(USArrests, 2, mean)
+
+pr.out$scale
+# apply(USArrests, 2, sd)
+
+pr.out$rotation
+
+
+dim(pr.out$x)
+head(pr.out$x)
+# The kth column is the kth PC score vector (z)
+
+biplot(pr.out, scale=0)
+# scale=0: the arrows are scaled to represent the loadings
+
+
+# The PCs are only unique up to a sign change
+pr.out$rotation=-pr.out$rotation
+pr.out$x=-pr.out$x
+biplot(pr.out, scale=0)
+
+
+pr.out$sdev
+# the standard deviation of each PC
+
+pr.var=pr.out$sdev^2
+pr.var
+# variance explained by each PC
+
+
+pve=pr.var/sum(pr.var)
+pve
+# PVE
+
+plot(pve, xlab="Principal Component", ylab="Proportion of Variance Explained", ylim=c(0,1),type='b')
+plot(cumsum(pve), xlab="Principal Component", ylab="Cumulative Proportion of Variance Explained", ylim=c(0,1),type='b')
+a=c(1,2,8,-3)
+cumsum(a)
+```
+
+```{r}
+
+num.data=airbnb_data%>%
+  select(price, reviews_per_month)
+
+km.out <- kmeans(num.data,2,nstart=20)
+# trying several random starts (nstart> 1) is often recommended
+km.out$cluster
+plot(num.data, col=(km.out$cluster+1), 
+     main="K-Means Clustering Results with K=2", 
+     xlab="", ylab="", pch=20, cex=2)
+
+
+km.out <- kmeans(x,3,nstart=20)
+plot(num.data, col=(km.out$cluster+1), 
+     main="K-Means Clustering Results with K=3", 
+     xlab="", ylab="", pch=20, cex=2)
+
+# Total within-cluster sum of squares
+
+km.out=kmeans(x,3,nstart=20)
+km.out$tot.withinss
 ```
 
