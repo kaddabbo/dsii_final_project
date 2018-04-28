@@ -6,19 +6,14 @@ output: html_document
 ---
 ##clean and tidy the airbnb data
 
-<<<<<<< HEAD
+
 ```{r load packages}
-=======
-```{r}
-rm(list=ls())
->>>>>>> 582b5c50f8d8079c5e94b1a850013175895d2f1f
 library(tidyverse)
 library(janitor)
 library(stringr)
 library(forcats)
 library(viridis)
 library(plotly)
-<<<<<<< HEAD
 library(ISLR)
 library(caret)
 library(corrplot)
@@ -29,12 +24,12 @@ library(gbm)
 library(adabag)
 library(e1071)
 library(MASS)
+library(caret)
+library(MASS)
+library(corrplot)
 ```
 
 ```{r clean and tidy data}
-=======
-library(dplyr)
->>>>>>> 582b5c50f8d8079c5e94b1a850013175895d2f1f
 airbnb_data = read_csv("./data/nyc_airbnb.zip") %>%
   clean_names()%>%
   mutate(rating = review_scores_location / 2)%>%
@@ -85,7 +80,6 @@ corrplot(cor(corr), method="shade",shade.col=NA, tl.col="black", tl.srt=45)
 
 ```
 
-<<<<<<< HEAD
 ```{r classification tree}
 airbnb_tree_data = dplyr::select(airbnb_data, -neighbourhood, -reviews_per_month,- name, -latitude, -longitude)
 
@@ -94,12 +88,7 @@ n = nrow(airbnb_tree_data)
 trainIndex = sample(1:n, size = round(0.5*n), replace=FALSE)
 airbnb_tree_train = airbnb_tree_data[trainIndex ,]
 airbnb_tree_test = airbnb_tree_data[-trainIndex ,]
-=======
-```{r}
-library(caret)
-library(MASS)
-library(corrplot)
->>>>>>> 582b5c50f8d8079c5e94b1a850013175895d2f1f
+
 
 #pruned tree
 tree.airbnb <- tree(boro ~ ., data = airbnb_tree_train)
@@ -157,14 +146,15 @@ summary(boost.airbnb)
 #price is important
 ```
 
-<<<<<<< HEAD
+
 ```{r comparation}
 compare_df = data.frame(Boosting_MSE = boost.mse, Random_forest_MSE =rf.mse, Bagging_MSE = bag.mse, Decision_trees_MSE = basic.mse)
 compare_df
-=======
-View(airbnb_data)
 ```
 
+
+
+####???????
 ```{r}
 pcr.data=airbnb_data%>%
   select(-name, -boro , -neighbourhood, -room_type, -latitude, -longitude, price, calculated_host_listings_count, number_of_reviews, reviews_per_month, availability_365)
@@ -235,6 +225,5 @@ plot(num.data, col=(km.out$cluster+1),
 
 km.out=kmeans(x,3,nstart=20)
 km.out$tot.withinss
->>>>>>> 582b5c50f8d8079c5e94b1a850013175895d2f1f
 ```
 
