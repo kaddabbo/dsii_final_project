@@ -6,20 +6,41 @@ output: html_document
 ---
 ##clean and tidy the airbnb data
 
-```{r}
+```{r load packages}
 library(tidyverse)
 library(janitor)
 library(stringr)
 library(forcats)
 library(viridis)
 library(plotly)
+library(ISLR)
+library(caret)
+library(corrplot)
+library(tree)
+library(rpart)
+library(randomForest)
+library(gbm)
+library(adabag)
+library(e1071)
+library(MASS)
+```
+
+```{r clean and tidy data}
 airbnb_data = read_csv("./data/nyc_airbnb.zip") %>%
   clean_names()%>%
   mutate(rating = review_scores_location / 2)%>%
-  select(boro = neighbourhood_group, neighbourhood, rating, number_of_reviews, price, room_type, reviews_per_month, availability_365, calculated_host_listings_count, name, latitude, longitude)%>%
-  filter(!is.na(rating),
-         price %in% 30:500)
+  dplyr::select(boro = neighbourhood_group, neighbourhood, rating, number_of_reviews, price, room_type, reviews_per_month, availability_365, calculated_host_listings_count, name, latitude, longitude)%>%
+  filter(!is.na(rating),price %in% 30:500)
+  
 
+airbnb_data$boro = as.factor(airbnb_data$boro)
+airbnb_data$neighbourhood = as.factor(airbnb_data$neighbourhood)
+airbnb_data$room_type = as.factor(airbnb_data$room_type)
+airbnb_data = na.omit(airbnb_data)
+```
+
+
+```{r some basic plots }
 #plotly scatter plot
 
 airbnb_data %>%
@@ -35,30 +56,93 @@ common_neighborhoods =
   top_n(8) %>% 
   select(neighbourhood)
 
+#neighborhood-price
 inner_join(airbnb_data, common_neighborhoods,
              by = "neighbourhood") %>% 
   mutate(neighbourhood = fct_reorder(neighbourhood, price)) %>% 
   plot_ly(y = ~price, color = ~neighbourhood, type = "box",
           colors = "Set2")
-
+#?
 airbnb_data %>% 
   count(neighbourhood) %>% 
   mutate(neighbourhood = fct_reorder(neighbourhood, n)) %>% 
   plot_ly(x = ~neighbourhood, y = ~n, color = ~neighbourhood, type = "bar")
 
-```
-
-```{r}
-
-library(ISLR)
-library(caret)
-library(MASS)
-library(corrplot)
-
+#corplot
 corr<-airbnb_data%>%
-  select(-boro , -neighbourhood, -room_type, -name, -latitude, -longitude)
+  dplyr::select(-boro , -neighbourhood, -room_type, -name, -latitude, -longitude)
 corrplot(cor(corr), method="shade",shade.col=NA, tl.col="black", tl.srt=45)
 
-airbnb_data
+
+```
+
+```{r classification tree}
+airbnb_tree_data = dplyr::select(airbnb_data, -neighbourhood, -reviews_per_month,- name, -latitude, -longitude)
+
+set.seed(123)
+n = nrow(airbnb_tree_data)
+trainIndex = sample(1:n, size = round(0.5*n), replace=FALSE)
+airbnb_tree_train = airbnb_tree_data[trainIndex ,]
+airbnb_tree_test = airbnb_tree_data[-trainIndex ,]
+
+#pruned tree
+tree.airbnb <- tree(boro ~ ., data = airbnb_tree_train)
+summary(tree.airbnb)
+
+cv.tree.airbnb <- cv.tree(tree.airbnb, FUN = prune.misclass)
+minsize=cv.tree.airbnb$size[which.min(cv.tree.airbnb$dev)]
+
+prune.tree.airbnb <- prune.misclass(tree.airbnb, best = minsize)
+summary(prune.tree.airbnb)
+
+#pruned tree plot
+plot(prune.tree.airbnb)
+text(prune.tree.airbnb, pretty = 0)
+
+#prediction
+predict.pruned.tree <- predict(prune.tree.airbnb, airbnb_tree_test, type='class')
+table(predict.pruned.tree, airbnb_tree_test$boro)
+
+basic.mse=mean(predict.pruned.tree != airbnb_tree_test$boro)
+```
+the optimal tree size equals to 3, the training data error rate is 0.4531. Use test dataset to predict, the error rate is 0.4448735.  
+
+```{r bagging}
+bag.airbnb <- randomForest(boro ~ ., data = airbnb_tree_train, mtry = 10, ntree = 500, importance = TRUE)
+pred.bag.airbnb <- predict(bag.airbnb, newdata = airbnb_tree_test)
+table(pred.bag.airbnb, airbnb_tree_test$boro )
+bag.mse=mean(pred.bag.airbnb!= airbnb_tree_test$boro )
+#0.4466045 test error.
+varImpPlot(bag.airbnb)
+#price and availability is important
+```
+
+```{r random forest}
+rf.airbnb <- randomForest(boro ~ ., data = airbnb_tree_train, mtry = 5, ntree = 500, importance = TRUE)
+pred.rf.airbnb <- predict(rf.airbnb, newdata = airbnb_tree_test)
+table(pred.rf.airbnb, airbnb_tree_test$boro )
+rf.mse=mean(pred.rf.airbnb!= airbnb_tree_test$boro )
+#0.4442743 test error
+varImpPlot(rf.airbnb)
+##price and availability is important
+```
+
+```{r boost}
+airbnb_tree_train$boro <- as.numeric(airbnb_tree_train$boro == "Manhattan") 
+airbnb_tree_test$boro <- as.numeric(airbnb_tree_test$boro == "Manhattan") 
+boost.airbnb = gbm(boro ~ ., data = airbnb_tree_train, distribution = "bernoulli", n.trees = 5000, interaction.depth = 4)
+yhat.boost = predict(boost.airbnb, newdata = airbnb_tree_test,
+n.trees = 5000, type = "response")
+pred.boost.airbnb <- ifelse(yhat.boost > 0.5, 1, 0)
+table(pred.boost.airbnb, airbnb_tree_test$boro)
+boost.mse = (2187 + 2596)/(2187 + 4483 + 2596 + 5754)
+#(2187 + 2596)/(2187 + 4483 + 2596 + 5754) =  0.318442   test error
+summary(boost.airbnb)
+#price is important
+```
+
+```{r comparation}
+compare_df = data.frame(Boosting_MSE = boost.mse, Random_forest_MSE =rf.mse, Bagging_MSE = bag.mse, Decision_trees_MSE = basic.mse)
+compare_df
 ```
 
