@@ -8,6 +8,7 @@ output: html_document
 
 
 ```{r load packages}
+rm(list=ls())
 library(tidyverse)
 library(janitor)
 library(stringr)
@@ -23,10 +24,9 @@ library(randomForest)
 library(gbm)
 library(adabag)
 library(e1071)
-library(MASS)
 library(caret)
-library(MASS)
 library(corrplot)
+library(MASS)
 ```
 
 ```{r clean and tidy data}
@@ -54,11 +54,10 @@ airbnb_data %>%
           color = ~price,
           text = ~text_label)
 
-common_neighborhoods =
-  airbnb_data %>% 
+common_neighborhoods = airbnb_data %>% 
   count(neighbourhood, sort = TRUE) %>% 
   top_n(8) %>% 
-  select(neighbourhood)
+  dplyr::select(neighbourhood)
 
 #neighborhood-price
 inner_join(airbnb_data, common_neighborhoods,
@@ -72,6 +71,9 @@ airbnb_data %>%
   mutate(neighbourhood = fct_reorder(neighbourhood, n)) %>% 
   plot_ly(x = ~neighbourhood, y = ~n, color = ~neighbourhood, type = "bar")
 
+```
+
+```{r}
 #corplot
 corr<-airbnb_data%>%
   dplyr::select(-boro , -neighbourhood, -room_type, -name, -latitude, -longitude)
@@ -79,6 +81,65 @@ corrplot(cor(corr), method="shade",shade.col=NA, tl.col="black", tl.srt=45)
 
 
 ```
+
+
+
+```{r lasso}
+numeric_data = airbnb_data%>%
+  dplyr::select(price,everything(),-boro, -neighbourhood, -room_type, -name, -longitude, -latitude)
+plot(numeric_data$price)
+featurePlot(x=numeric_data[,2:5],y=numeric_data$price, plot = 'pairs')
+#splitting data into train and test
+sample_size=floor(0.75*nrow(numeric_data))
+set(1)
+sample_air = sample(seq_len(nrow(numeric_data)), size = sample_size)
+train = numeric_data[sample_air, ]
+test = numeric_data[-sample_air, ]
+#LSE on the traing data
+ln_model = lm(price~., data=train)
+pred_data = predict(ln_model, test)
+test_error = mean((pred_data-test$price)^2)
+test_error
+#ridge regression
+x_test = model.matrix(price~.,train)[,-1]
+y_test = train$price
+grid_ridge = 10^seq(10.,-5, length = 1000)
+library(glmnet)
+ridge_model = glmnet(x_test,y_test,alpha=0,lambda = grid_ridge)
+cv.out = cv.glmnet(x_test,y_test,alpha=0, lambda = grid_ridge,
+                   type.measure = "mse")
+plot(cv.out)
+best_lambda = cv.out$lambda.min
+round(best_lambda,3)
+
+best_ridge_mod = glmnet(x_test,y_test,alpha=0,lambda = best_lambda)
+
+reg_pred=predict(best_ridge_mod ,s=best_lambda,newx=x_test)
+
+test_error2= 
+mean((reg_pred-y_test)^2);test_error2
+```
+
+
+
+```{r lasso}
+set.seed(2)
+grid_lasso = exp(seq(1,-8,length=100))
+lasso_mod = glmnet(x_test,y_test,alpha=1,lambda= grid_lasso)
+cv.out2 = cv.glmnet(x_test,y_test,alpha=1,lambda= grid_lasso)
+best_lambda2 = cv.out2$lambda_min
+plot(cv.out2)
+
+pred_lasso = predict(lasso_mod ,s=best_lambda2, newx=x_test)
+test_error3 = mean((pred_lasso-y_test)^2);test_error3
+
+
+coefficients = predict(lasso_mod, s=best_lambda2, type="coefficients") %>%
+                as.matrix()
+non_zero_coeff = coefficients[coefficients[,1] != 0,]
+non_zero_coeff%>% knitr::kable()
+```
+
 
 ```{r classification tree}
 airbnb_tree_data = dplyr::select(airbnb_data, -neighbourhood, -reviews_per_month,- name, -latitude, -longitude)
@@ -152,78 +213,4 @@ compare_df = data.frame(Boosting_MSE = boost.mse, Random_forest_MSE =rf.mse, Bag
 compare_df
 ```
 
-
-
-####???????
-```{r}
-pcr.data=airbnb_data%>%
-  select(-name, -boro , -neighbourhood, -room_type, -latitude, -longitude, price, calculated_host_listings_count, number_of_reviews, reviews_per_month, availability_365)
-
-pr.out <- prcomp(pcr.data, scale=TRUE)
-names(pr.out)
-
-pr.out$center
-# apply(USArrests, 2, mean)
-
-pr.out$scale
-# apply(USArrests, 2, sd)
-
-pr.out$rotation
-
-
-dim(pr.out$x)
-head(pr.out$x)
-# The kth column is the kth PC score vector (z)
-
-biplot(pr.out, scale=0)
-# scale=0: the arrows are scaled to represent the loadings
-
-
-# The PCs are only unique up to a sign change
-pr.out$rotation=-pr.out$rotation
-pr.out$x=-pr.out$x
-biplot(pr.out, scale=0)
-
-
-pr.out$sdev
-# the standard deviation of each PC
-
-pr.var=pr.out$sdev^2
-pr.var
-# variance explained by each PC
-
-
-pve=pr.var/sum(pr.var)
-pve
-# PVE
-
-plot(pve, xlab="Principal Component", ylab="Proportion of Variance Explained", ylim=c(0,1),type='b')
-plot(cumsum(pve), xlab="Principal Component", ylab="Cumulative Proportion of Variance Explained", ylim=c(0,1),type='b')
-a=c(1,2,8,-3)
-cumsum(a)
-```
-
-```{r}
-
-num.data=airbnb_data%>%
-  select(price, reviews_per_month)
-
-km.out <- kmeans(num.data,2,nstart=20)
-# trying several random starts (nstart> 1) is often recommended
-km.out$cluster
-plot(num.data, col=(km.out$cluster+1), 
-     main="K-Means Clustering Results with K=2", 
-     xlab="", ylab="", pch=20, cex=2)
-
-
-km.out <- kmeans(x,3,nstart=20)
-plot(num.data, col=(km.out$cluster+1), 
-     main="K-Means Clustering Results with K=3", 
-     xlab="", ylab="", pch=20, cex=2)
-
-# Total within-cluster sum of squares
-
-km.out=kmeans(x,3,nstart=20)
-km.out$tot.withinss
-```
 
