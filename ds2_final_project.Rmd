@@ -20,27 +20,40 @@ library(caret)
 library(corrplot)
 library(tree)
 library(rpart)
+library(glmnet)
 library(randomForest)
 library(gbm)
 library(adabag)
 library(e1071)
-library(caret)
-library(corrplot)
 library(MASS)
+library(pROC)
 ```
 
 ```{r clean and tidy data}
-airbnb_data = read_csv("./data/nyc_airbnb.zip") %>%
+airbnb_initial = read_csv("./data/nyc_airbnb.zip") 
+
+airbnb_data = airbnb_initial%>%
   clean_names()%>%
   mutate(rating = review_scores_location / 2)%>%
   dplyr::select(boro = neighbourhood_group, neighbourhood, rating, number_of_reviews, price, room_type, reviews_per_month, availability_365, calculated_host_listings_count, name, latitude, longitude)%>%
   filter(!is.na(rating),price %in% 30:500)
   
-
 airbnb_data$boro = as.factor(airbnb_data$boro)
 airbnb_data$neighbourhood = as.factor(airbnb_data$neighbourhood)
 airbnb_data$room_type = as.factor(airbnb_data$room_type)
 airbnb_data = na.omit(airbnb_data)
+
+
+airbnb = airbnb_initial %>%
+  clean_names() %>%
+  dplyr::select(-name, -host_id, -host_name, -latitude, -longitude, -last_review)
+
+airbnb = airbnb[c(3,4,2,9,5,6,7,8,10,11,1)]
+airbnb[, 3:4][is.na(airbnb[, 3:4])] = 0
+
+airbnb$neighbourhood_group = as.numeric(as.factor(airbnb$neighbourhood_group))
+airbnb$neighbourhood = as.numeric(as.factor(airbnb$neighbourhood))
+airbnb$room_type = as.numeric(as.factor(airbnb$room_type))
 ```
 
 
@@ -77,9 +90,9 @@ airbnb_data %>%
 #corplot
 corr<-airbnb_data%>%
   dplyr::select(-boro , -neighbourhood, -room_type, -name, -latitude, -longitude)
-corrplot(cor(corr), method="shade",shade.col=NA, tl.col="black", tl.srt=45)
+corrplot(cor(corr), method="square",shade.col=NA, tl.col="black", tl.srt=45)
 
-
+corrplot(cor(airbnb), method = "square", shade.col = NA)
 ```
 
 
@@ -87,24 +100,30 @@ corrplot(cor(corr), method="shade",shade.col=NA, tl.col="black", tl.srt=45)
 ```{r lasso}
 numeric_data = airbnb_data%>%
   dplyr::select(price,everything(),-boro, -neighbourhood, -room_type, -name, -longitude, -latitude)
+
 plot(numeric_data$price)
 featurePlot(x=numeric_data[,2:5],y=numeric_data$price, plot = 'pairs')
+
 #splitting data into train and test
 sample_size=floor(0.75*nrow(numeric_data))
-set(1)
+
+set.seed(1)
+
 sample_air = sample(seq_len(nrow(numeric_data)), size = sample_size)
 train = numeric_data[sample_air, ]
 test = numeric_data[-sample_air, ]
+
 #LSE on the traing data
 ln_model = lm(price~., data=train)
 pred_data = predict(ln_model, test)
 test_error = mean((pred_data-test$price)^2)
 test_error
+
 #ridge regression
 x_test = model.matrix(price~.,train)[,-1]
 y_test = train$price
 grid_ridge = 10^seq(10.,-5, length = 1000)
-library(glmnet)
+
 ridge_model = glmnet(x_test,y_test,alpha=0,lambda = grid_ridge)
 cv.out = cv.glmnet(x_test,y_test,alpha=0, lambda = grid_ridge,
                    type.measure = "mse")
@@ -124,10 +143,13 @@ mean((reg_pred-y_test)^2);test_error2
 
 ```{r lasso}
 set.seed(2)
+
 grid_lasso = exp(seq(1,-8,length=100))
 lasso_mod = glmnet(x_test,y_test,alpha=1,lambda= grid_lasso)
+
 cv.out2 = cv.glmnet(x_test,y_test,alpha=1,lambda= grid_lasso)
 best_lambda2 = cv.out2$lambda_min
+
 plot(cv.out2)
 
 pred_lasso = predict(lasso_mod ,s=best_lambda2, newx=x_test)
@@ -140,6 +162,33 @@ non_zero_coeff = coefficients[coefficients[,1] != 0,]
 non_zero_coeff%>% knitr::kable()
 ```
 
+```{r LDA QDA}
+set.seed(4)
+
+train_lq = sample(1:dim(airbnb)[1], 15000, replace = FALSE)
+
+ctrl = trainControl(method = "cv",
+                     summaryFunction = twoClassSummary,
+                     classProbs = TRUE)
+
+lda.fit = lda(neighbourhood_group ~ ., data = airbnb, subset = train_lq)
+
+lda.pred = predict(lda.fit, newdata = airbnb[-train_lq,])
+
+#roc.lda = roc(airbnb$neighbourhood_group[-train_lq], lda.pred$posterior[,2])
+#plot(roc.lda, legacy.axes = TRUE)
+
+
+#ldafit1 = train(x = airbnb[,-1],
+#                 y = airbnb$neighbourhood_group,
+#                 method = "lda",
+#                 preProc = c("center","scale"),
+#                 metric = "ROC",
+#                 trControl = ctrl)
+
+
+#qda.fit = qda(price ~ Lag1+Lag2, data = airbnb ,subset = train_ql)
+```
 
 ```{r classification tree}
 airbnb_tree_data = dplyr::select(airbnb_data, -neighbourhood, -reviews_per_month,- name, -latitude, -longitude)
@@ -212,5 +261,3 @@ summary(boost.airbnb)
 compare_df = data.frame(Boosting_MSE = boost.mse, Random_forest_MSE =rf.mse, Bagging_MSE = bag.mse, Decision_trees_MSE = basic.mse)
 compare_df
 ```
-
-
