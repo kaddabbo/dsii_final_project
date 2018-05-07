@@ -7,7 +7,7 @@ output: html_document
 ##clean and tidy the airbnb data
 
 
-```{r load packages}
+```{r load packages, include = FALSE}
 rm(list=ls())
 library(tidyverse)
 library(janitor)
@@ -30,7 +30,7 @@ library(pROC)
 library(partykit)
 ```
 
-```{r clean and tidy data}
+```{r clean and tidy data, include = FALSE}
 airbnb_initial = read_csv("./data/nyc_airbnb.zip") 
 
 airbnb_data = airbnb_initial%>%
@@ -146,7 +146,7 @@ mean((reg_pred-y_test)^2);test_error2
 
 
 
-```{r lasso}
+```{r lasso p 2}
 set.seed(2)
 
 grid_lasso = exp(seq(1,-8,length=100))
@@ -180,7 +180,7 @@ summary(fit_price) # detailed summary of splits
 
 plot(as.party(fit_price))
 
-predict(fit_price, newdata = airbnb[-train_price_tree,])
+pred_fit_price = predict(fit_price, newdata = airbnb[-train_price_tree,])
 
 
 # no pruning
@@ -189,7 +189,7 @@ ctree_price = ctree(price~., airbnb, subset = train_price_tree)
 #summary(ctree.boston)
 #plot(ctree_price) useless
 
-predict(ctree_price, newdata = airbnb[-train_price_tree,])
+pred_ctree_price = predict(ctree_price, newdata = airbnb[-train_price_tree,])
 
 
 # tune over maximum depth, method = "rpart2" (plots Max Tree depth)
