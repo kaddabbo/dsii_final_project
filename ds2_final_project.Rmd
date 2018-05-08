@@ -112,7 +112,7 @@ test = numeric_data[-sample_air, ]
 #LSE on the traing data
 ln_model = lm(price~., data=train)
 pred_data = predict(ln_model, test)
-test_error1 = mean((pred_data-test$price)^2)
+test_error1 = mean((pred_data-test$price)^2)#4777.552
 
 ```
 
@@ -126,18 +126,15 @@ ridge_model = glmnet(x_test,y_test,alpha=0,lambda = grid_ridge)
 cv.out = cv.glmnet(x_test,y_test,alpha=0, lambda = grid_ridge,
                    type.measure = "mse")
 plot(cv.out)
-best_lambda = cv.out$lambda.min
-round(best_lambda,3)
+best_lambda1 = round(cv.out$lambda.min,3);best_lambda1#0.178
 
-best_ridge_mod = glmnet(x_test,y_test,alpha=0,lambda = best_lambda)
+best_ridge_mod = glmnet(x_test,y_test,alpha=0,lambda = best_lambda1)
 
-reg_pred=predict(best_ridge_mod ,s=best_lambda,newx=x_test)
+reg_pred=predict(best_ridge_mod ,s=best_lambda1,newx=x_test)
 
-test_error2= 
-mean((reg_pred-y_test)^2);test_error2
+test_error2= round(mean((reg_pred-y_test)^2),3);test_error2#4859.771
 ```
 
-Our team applies the shrinking techniques such as Ridge, Lasso, PCR(Principle Component Analysis),PLS(Partial Least Square) into the airbnb data set. The criteria for selecting the best model is the selection of the lowest test error among those of the srinking methods mentioned above. For each model, we found method-specific tuning parameters. Ridge regression 
 
 ```{r Lasso}
 set.seed(2)
@@ -146,12 +143,12 @@ grid_lasso = exp(seq(1,-8,length=100))
 lasso_mod = glmnet(x_test,y_test,alpha=1,lambda= grid_lasso)
 
 cv.out2 = cv.glmnet(x_test,y_test,alpha=1,lambda= grid_lasso)
-best_lambda2 = cv.out2$lambda_min
+best_lambda2 = round(cv.out2$lambda.min, 3);best_lambda2#0.28
 
 plot(cv.out2)
 
 pred_lasso = predict(lasso_mod ,s=best_lambda2, newx=x_test)
-test_error3 = mean((pred_lasso-y_test)^2);test_error3
+test_error3 = mean((pred_lasso-y_test)^2);test_error3#4860.522
 
 
 coefficients = predict(lasso_mod, s=best_lambda2, type="coefficients") %>%
@@ -160,7 +157,9 @@ non_zero_coeff = coefficients[coefficients[,1] != 0,]
 non_zero_coeff%>% knitr::kable()
 ```
 
+
 ```{r PCR}
+library(pls)
 set.seed(3)
 # pcr
 # matrix of predictors
@@ -184,7 +183,8 @@ summary(pcr.fit)
 validationplot(pcr.fit,val.type="MSEP")
 # test set performance
 pcr.pred = predict(pcr.fit,x[-trRows,],ncomp=5)
-test_error4 = mean((pcr.pred-y[-trRows])^2)
+test_error4 = round(mean((pcr.pred-y[-trRows])^2),3);test_error4 #4564.748
+
 ```
 
 ```{r PLS}
@@ -198,8 +198,9 @@ summary(pls.fit)
 validationplot(pls.fit,val.type="MSEP")
 # test set performance
 pls.pred = predict(pls.fit,x[-trRows,],ncomp=2)
-test_error5 = mean((pls.pred-y[-trRows])^2)
+test_error5 = round(mean((pls.pred-y[-trRows])^2),3);test_error5# 4209.287
 ```
+
 
 ```{r MSE}
 MSE=matrix(c(test_error1,test_error2,test_error3,test_error4, test_error5))
@@ -207,7 +208,7 @@ rownames(MSE) <- c("Linear", "Ridge","Lasso", "PCR", "PLS")
 colnames(MSE) = "Test Errors from Each Model"
 MSE
 ```
-
+Our team applies the shrinking techniques such as Ridge, Lasso, PCR(Principle Component Analysis),PLS(Partial Least Square) into the airbnb data set. The criteria for selecting the best model is the selection of the lowest test error among those of the srinking methods mentioned above. For each model, we found method-specific tuning parameters. The ridge regression with the best tune parameter `r best_lamda1`  has `r test_error2` test error close to `test_error1` of LSE because the tune parameter is close to 0. The Lasso model with the compensation of variable selections for the drawback of ridge regression yields sparse models involving a subset of variables. Although by using lasso, we expected reduced variance at the cost of small increase in bias, its best lamda is `r best_lamda2` and test error is `r test_error3`. After that, PCR was used as another technique of deriving a low dimensional set of features from a large set of variables. The first principal component direction of the data is that along which the observations vary the most. As the result, `r test_error4` of the smaller test error was obtained. Lastly, pls is used as a supervised alternative to PCR whose test error is `r test_error5`, the smallest one. 
 
 ```{r price regression tree}
 set.seed(46)
