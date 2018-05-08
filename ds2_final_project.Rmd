@@ -33,16 +33,16 @@ library(partykit)
 ```{r clean and tidy data, include = FALSE}
 airbnb_initial = read_csv("./data/nyc_airbnb.zip")
 
-airbnb_data = airbnb_initial%>%
+airbnb_initial = airbnb_initial%>%
   clean_names()%>%
   mutate(rating = review_scores_location / 2)%>%
   dplyr::select(id, boro = neighbourhood_group, neighbourhood, rating, reviews_per_month, number_of_reviews, price, room_type, reviews_per_month, availability_365, calculated_host_listings_count, minimum_nights, latitude, longitude)%>%
   filter(price %in% 30:500)
   
-airbnb_data$boro = as.numeric(as.factor(airbnb_data$boro))
-airbnb_data$neighbourhood = as.numeric(as.factor(airbnb_data$neighbourhood))
-airbnb_data$room_type = as.numeric(as.factor(airbnb_data$room_type))
-
+airbnb_data = airbnb_initial%>%
+  mutate(boro = as.numeric(as.factor(boro)),
+        neighbourhood = as.numeric(as.factor(airbnb_data$neighbourhood)),
+        as.numeric(as.factor(airbnb_data$room_type)))
 airbnb_data[, 4:5][is.na(airbnb_data[, 4:5])] = 0
 ```
 
@@ -50,26 +50,25 @@ airbnb_data[, 4:5][is.na(airbnb_data[, 4:5])] = 0
 ```{r some basic plots }
 #plotly scatter plot
 
-airbnb_data %>%
-  mutate(text_label = str_c("Price: $", price, '\nRating: ', rating, '\nName: ', name)) %>% 
+airbnb_initial %>%
+  mutate(text_label = str_c("Price: $", price, '\nRating: ', rating)) %>% 
   plot_ly(x = ~longitude, y = ~latitude, type = "scatter", mode = "markers",
           alpha = 0.5, 
           color = ~price,
           text = ~text_label)
 
-common_neighborhoods = airbnb_data %>% 
+common_neighborhoods = airbnb_initial %>% 
   count(neighbourhood, sort = TRUE) %>% 
   top_n(8) %>% 
   dplyr::select(neighbourhood)
 
 #neighborhood-price
-inner_join(airbnb_data, common_neighborhoods,
-             by = "neighbourhood") %>% 
+inner_join(airbnb_initial, common_neighborhoods, by = "neighbourhood")%>%
   mutate(neighbourhood = fct_reorder(neighbourhood, price)) %>% 
   plot_ly(y = ~price, color = ~neighbourhood, type = "box",
           colors = "Set2")
-#?
-airbnb_data %>% 
+#frequencty of popular neighborhood
+airbnb_initial %>% 
   count(neighbourhood) %>% 
   mutate(neighbourhood = fct_reorder(neighbourhood, n)) %>% 
   plot_ly(x = ~neighbourhood, y = ~n, color = ~neighbourhood, type = "bar")
@@ -83,19 +82,20 @@ airbnb_data %>%
 ```{r}
 #corplot
 corr<-airbnb_data%>%
-  dplyr::select(-boro , -neighbourhood, -room_type, -name, -latitude, -longitude)
+  dplyr::select(-boro , -neighbourhood, -room_type, -latitude, -longitude)
 corrplot(cor(corr), method="square",shade.col=NA, tl.col="black", tl.srt=45)
 
-corr2 = airbnb %<%
-  dplyr::select()
-corrplot(cor(airbnb), method = "square", shade.col = NA)
+#error occurs!
+airbnb = airbnb_initial #I cannot find what the datset 'airbnb' is above, so just assign 'airbnb_initial' above into 'airbnb'
+#corr2 = airbnb%<%
+#  dplyr::select()
+#corrplot(cor(airbnb), method = "square", shade.col = NA)
 ```
 
 
-
-```{r lasso}
+```{r Linear}
 numeric_data = airbnb_data%>%
-  dplyr::select(price,everything(),-boro, -neighbourhood, -room_type, -name, -longitude, -latitude)
+  dplyr::select(price,everything(),-boro, -neighbourhood, -room_type, -longitude, -latitude)
 
 plot(numeric_data$price)
 featurePlot(x=numeric_data[,2:5],y=numeric_data$price, plot = 'pairs')
@@ -112,9 +112,11 @@ test = numeric_data[-sample_air, ]
 #LSE on the traing data
 ln_model = lm(price~., data=train)
 pred_data = predict(ln_model, test)
-test_error = mean((pred_data-test$price)^2)
-test_error
+test_error1 = mean((pred_data-test$price)^2)
 
+```
+
+```{r Ridge}
 #ridge regression
 x_test = model.matrix(price~.,train)[,-1]
 y_test = train$price
@@ -137,7 +139,7 @@ mean((reg_pred-y_test)^2);test_error2
 
 
 
-```{r lasso p 2}
+```{r Lasso}
 set.seed(2)
 
 grid_lasso = exp(seq(1,-8,length=100))
@@ -158,8 +160,58 @@ non_zero_coeff = coefficients[coefficients[,1] != 0,]
 non_zero_coeff%>% knitr::kable()
 ```
 
+```{r PCR}
+set.seed(3)
+# pcr
+# matrix of predictors
+x = model.matrix(price~.,airbnb_data)[,-1]
+# vector of response
+y = airbnb_data$price
+
+# create traing set
+trRows <- createDataPartition(y,
+                              p = .50,
+                              list = F)
+
+# implementation using package pls
+# pcr
+pcr.fit = pcr(price~., 
+              data = airbnb_data,
+              subset = trRows,
+              scale = TRUE, # standardize the predictors!!
+              validation = "CV")
+summary(pcr.fit)
+validationplot(pcr.fit,val.type="MSEP")
+# test set performance
+pcr.pred = predict(pcr.fit,x[-trRows,],ncomp=5)
+test_error4 = mean((pcr.pred-y[-trRows])^2)
+```
+
+```{r PLS}
+# pls
+pls.fit = plsr(price~., 
+               data=airbnb_data, 
+               scale=TRUE,  
+               subset = trRows,
+               validation ="CV")
+summary(pls.fit)
+validationplot(pls.fit,val.type="MSEP")
+# test set performance
+pls.pred = predict(pls.fit,x[-trRows,],ncomp=2)
+test_error5 = mean((pls.pred-y[-trRows])^2)
+```
+
+```{r MSE}
+MSE=matrix(c(test_error1,test_error2,test_error3,test_error4, test_error5))
+rownames(MSE) <- c("Linear", "Ridge","Lasso", "PCR", "PLS") 
+colnames(MSE) = "Test Errors from Each Model"
+MSE
+```
+
+
 ```{r price regression tree}
 set.seed(46)
+
 train_price_tree = sample(1:nrow(airbnb), nrow(airbnb)/2)
 
 # grow tree 
