@@ -5,14 +5,8 @@ date: "April 19, 2018"
 output: html_document
 ---
 ##clean and tidy the airbnb data
-<<<<<<< HEAD
-```{r load packages}
-=======
 
-
-```{r load packages, include = FALSE}
-rm(list=ls())
->>>>>>> f738ea6af05a56b9ad13e6ce08c87aa3cd26466a
+```{r load packages, include=FALSE}
 library(tidyverse)
 library(janitor)
 library(stringr)
@@ -41,8 +35,11 @@ airbnb_initial = airbnb_initial%>%
   clean_names()%>%
   mutate(rating = review_scores_location / 2)%>%
   dplyr::select(id, boro = neighbourhood_group, neighbourhood, rating, reviews_per_month, number_of_reviews, price, room_type, reviews_per_month, availability_365, calculated_host_listings_count, minimum_nights, latitude, longitude)%>%
+  mutate(room_type = as.factor(airbnb_initial$room_type),
+         boro = as.factor(airbnb_initial$neighbourhood_group)) %>% 
   filter(price %in% 30:500)
-  
+airbnb_initial=na.omit(airbnb_initial)
+
 airbnb_data = airbnb_initial%>%
   mutate(boro = as.numeric(as.factor(boro)),
         neighbourhood = as.numeric(as.factor(airbnb_initial$neighbourhood)),
@@ -296,7 +293,7 @@ lda.pred = predict(lda.fit, newdata = airbnb[-train_lq,])
 ```
 
 ```{r boro classification tree}
-airbnb_tree_data = dplyr::select(airbnb_data, -neighbourhood, -reviews_per_month,- name, -latitude, -longitude)
+airbnb_tree_data = dplyr::select(airbnb_initial, -neighbourhood, -reviews_per_month, -latitude, -longitude)
 
 set.seed(123)
 n = nrow(airbnb_tree_data)
@@ -324,17 +321,19 @@ predict.pruned.tree <- predict(prune.tree.airbnb, airbnb_tree_test, type='class'
 table(predict.pruned.tree, airbnb_tree_test$boro)
 
 basic.mse=mean(predict.pruned.tree != airbnb_tree_test$boro)
+basic.mse
 ```
-the optimal tree size equals to 3, the training data error rate is 0.4531. Use test dataset to predict, the error rate is 0.4448735.  
+the optimal tree size equals to 3, the training data error rate is 0.4531. Use test dataset to predict, the error rate is 0.4472914.  
 
 ```{r bagging}
 bag.airbnb <- randomForest(boro ~ ., data = airbnb_tree_train, mtry = 10, ntree = 500, importance = TRUE)
 pred.bag.airbnb <- predict(bag.airbnb, newdata = airbnb_tree_test)
 table(pred.bag.airbnb, airbnb_tree_test$boro )
 bag.mse=mean(pred.bag.airbnb!= airbnb_tree_test$boro )
-#0.4466045 test error.
+bag.mse
+#0.4122854 is test error.
 varImpPlot(bag.airbnb)
-#price and availability is important
+#price, room type and availability is important
 ```
 
 ```{r random forest}
@@ -342,7 +341,8 @@ rf.airbnb <- randomForest(boro ~ ., data = airbnb_tree_train, mtry = 5, ntree = 
 pred.rf.airbnb <- predict(rf.airbnb, newdata = airbnb_tree_test)
 table(pred.rf.airbnb, airbnb_tree_test$boro )
 rf.mse=mean(pred.rf.airbnb!= airbnb_tree_test$boro )
-#0.4442743 test error
+rf.mse
+#0.4082923 test error
 varImpPlot(rf.airbnb)
 ##price and availability is important
 ```
@@ -355,14 +355,36 @@ yhat.boost = predict(boost.airbnb, newdata = airbnb_tree_test,
 n.trees = 5000, type = "response")
 pred.boost.airbnb <- ifelse(yhat.boost > 0.5, 1, 0)
 table(pred.boost.airbnb, airbnb_tree_test$boro)
-boost.mse = (2187 + 2596)/(2187 + 4483 + 2596 + 5754)
-#(2187 + 2596)/(2187 + 4483 + 2596 + 5754) =  0.318442   test error
+boost.mse = (2250 + 2493)/(2250 + 5706 + 2493 + 4577)
+#(2250 + 2493)/(2250 + 5706 + 2493 + 4577) =  0.315652   test error
 summary(boost.airbnb)
-#price is important
+#price is important.And room type, rating and availability are also important.
 ```
 
-
-```{r comparation}
+```{r compare}
 compare_df = data.frame(Boosting_MSE = boost.mse, Random_forest_MSE =rf.mse, Bagging_MSE = bag.mse, Decision_trees_MSE = basic.mse)
 compare_df
 ```
+
+Among these methods, boosting gives the best result on this data based on the test error rates. Pruned classification tree has the worest performance.Random forest and bagging have similar test error rates as well as the performance. Since the data has many predictors, boosting might be easier to tune and less possible to overfit the data than other methods.
+
+```{r svm_linear}
+airbnb_svm_data = dplyr::select(airbnb_initial, -neighbourhood, -reviews_per_month, -latitude, -longitude)
+
+set.seed(123)
+n = nrow(airbnb_svm_data)
+trainIndex = sample(1:n, size = round(0.5*n), replace=FALSE)
+airbnb_svm_train = airbnb_svm_data[trainIndex ,]
+airbnb_svm_test = airbnb_svm_data[-trainIndex ,]
+
+
+svm.linear <- svm(boro ~ ., data = airbnb_svm_train, 
+                 kernel = "linear",
+                 cost = 0.01)
+summary(svm.linear)
+test.pred <- predict(svm.linear, newdata = airbnb_svm_test)
+table(airbnb_svm_test$boro, test.pred)
+mean(airbnb_svm_test$boro != test.pred)
+#0.4257287 is the test error rate
+```
+
