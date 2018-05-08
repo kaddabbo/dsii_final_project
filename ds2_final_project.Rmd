@@ -26,19 +26,24 @@ library(e1071)
 library(MASS)
 library(pROC)
 library(partykit)
+library(boot)
+library(pls)
+library(gam)
 ```
 
 ```{r clean and tidy data, include = FALSE}
-airbnb_initial = read_csv("./data/nyc_airbnb.zip")
+airbnb = read_csv("./data/nyc_airbnb.zip")
 
-airbnb_data = airbnb_initial%>%
+airbnb_initial = airbnb%>%
   clean_names()%>%
   mutate(rating = review_scores_location / 2)%>%
-  dplyr::select(id, boro = neighbourhood_group, neighbourhood, rating, reviews_per_month, number_of_reviews, price, room_type, reviews_per_month, availability_365, calculated_host_listings_count, minimum_nights, latitude, longitude)%>%
+  dplyr::select(id, boro = neighbourhood_group, neighbourhood, rating, reviews_per_month, number_of_reviews, price, room_type, reviews_per_month, availability_365, calculated_host_listings_count, minimum_nights, latitude, longitude) %>% 
+  filter(price %in% 30:500)
+
+airbnb_data = airbnb_initial %>%
   mutate(room_type = as.numeric(as.factor(room_type)),
          boro = as.numeric(as.factor(boro)),
-         neighbourhood = as.numeric(as.factor(neighbourhood))) %>% 
-  filter(price %in% 30:500)
+         neighbourhood = as.numeric(as.factor(neighbourhood))) 
 
 airbnb_data[, 4:5][is.na(airbnb_data[, 4:5])] = 0
 ```
@@ -47,7 +52,7 @@ airbnb_data[, 4:5][is.na(airbnb_data[, 4:5])] = 0
 ```{r some basic plots }
 #plotly scatter plot
 
-airbnb_initial %>%
+airbnb_data %>%
   mutate(text_label = str_c("Price: $", price, '\nRating: ', rating)) %>% 
   plot_ly(x = ~longitude, y = ~latitude, type = "scatter", mode = "markers",
           alpha = 0.5, 
@@ -71,7 +76,7 @@ airbnb_initial %>%
   plot_ly(x = ~neighbourhood, y = ~n, color = ~neighbourhood, type = "bar")
 
 
-airbnb_data %>% 
+airbnb_initial %>% 
   count(neighbourhood) %>%
   arrange(desc(n))
 ```
@@ -81,12 +86,6 @@ airbnb_data %>%
 corr<-airbnb_data%>%
   dplyr::select(-boro , -neighbourhood, -room_type, -latitude, -longitude)
 corrplot(cor(corr), method="square",shade.col=NA, tl.col="black", tl.srt=45)
-
-#error occurs!
-airbnb = airbnb_initial #I cannot find what the datset 'airbnb' is above, so just assign 'airbnb_initial' above into 'airbnb'
-#corr2 = airbnb%<%
-#  dplyr::select()
-#corrplot(cor(airbnb), method = "square", shade.col = NA)
 ```
 
 
@@ -156,7 +155,6 @@ non_zero_coeff%>% knitr::kable()
 
 
 ```{r PCR}
-library(pls)
 set.seed(3)
 # pcr
 # matrix of predictors
@@ -205,9 +203,8 @@ rownames(MSE) <- c("Linear", "Ridge","Lasso", "PCR", "PLS")
 colnames(MSE) = "Test Errors from Each Model"
 MSE
 ```
-Our team applies the shrinking techniques such as Ridge, Lasso, PCR(Principle Component Analysis),PLS(Partial Least Square) into the airbnb data set. The criteria for selecting the best model is the selection of the lowest test error among those of the srinking methods mentioned above. For each model, we found method-specific tuning parameters. The ridge regression with the best tune parameter `r best_lamda1`  has `r test_error2` test error close to `test_error1` of LSE because the tune parameter is close to 0. The Lasso model with the compensation of variable selections for the drawback of ridge regression yields sparse models involving a subset of variables. Although by using lasso, we expected reduced variance at the cost of small increase in bias, its best lamda is `r best_lamda2` and test error is `r test_error3`. After that, PCR was used as another technique of deriving a low dimensional set of features from a large set of variables. The first principal component direction of the data is that along which the observations vary the most. As the result, `r test_error4` of the smaller test error was obtained. Lastly, pls is used as a supervised alternative to PCR whose test error is `r test_error5`, the smallest one. 
+Our team applies the shrinking techniques such as Ridge, Lasso, PCR(Principle Component Analysis),PLS(Partial Least Square) into the airbnb data set. The criteria for selecting the best model is the selection of the lowest test error among those of the srinking methods mentioned above. For each model, we found method-specific tuning parameters. The ridge regression with the best tune parameter `r best_lambda1`  has `r test_error2` test error close to `test_error1` of LSE because the tune parameter is close to 0. The Lasso model with the compensation of variable selections for the drawback of ridge regression yields sparse models involving a subset of variables. Although by using lasso, we expected reduced variance at the cost of small increase in bias, its best lamda is `r best_lambda2` and test error is `r test_error3`. After that, PCR was used as another technique of deriving a low dimensional set of features from a large set of variables. The first principal component direction of the data is that along which the observations vary the most. As the result, `r test_error4` of the smaller test error was obtained. Lastly, pls is used as a supervised alternative to PCR whose test error is `r test_error5`, the smallest one. 
 ```{r polynomial}
-library(boot)
 airbnb_data2=airbnb_data%>%
   dplyr::select(-longitude,-latitude)%>%
   mutate(room_type = as.numeric(as.factor(room_type)))
@@ -261,7 +258,6 @@ rss
 ```
 From d =4, the RSS extremely decreased. After that, the subsequent increased df has similar RSS
 ```{r GAM}
-library(gam)
 gam = gam(price ~ s(boro) + s(neighbourhood) + 
             s(rating) + s(calculated_host_listings_count) + s(number_of_reviews) +
             s(availability_365), data = airbnb_data2)
@@ -271,37 +267,38 @@ plot(gam, se=TRUE,col="blue")
 
 Using 6 predictors, I fit a GAM where price has approximately linear positive associations with availability_365 and negative association with number of reviews. The plot also shows that the low rating has lower prices except for '0' rating, which seem to be quadratic. The higher rating is, the higher price is. In Manhattan, price is much higher than that of the other boroughs. In addition, it seems that the association between price and neighbourhood has the fourth degree polynomial.
 
-```{r price regression tree}
+``{r price regression tree}
 set.seed(46)
 
-train_price_tree = sample(1:nrow(airbnb), nrow(airbnb)/2)
+train_price_tree = sample(1:nrow(airbnb_data), nrow(airbnb_data)/2)
 
 # grow tree 
-fit_price = rpart(price ~ ., data = airbnb, subset = train_price_tree)
+fit_price = rpart(price ~ ., data = airbnb_data, subset = train_price_tree)
 
 printcp(fit_price) # display the results 
 plotcp(fit_price) # visualize cross-validation results 
 summary(fit_price) # detailed summary of splits
+#HUGE
 
 plot(as.party(fit_price))
 
-pred_fit_price = predict(fit_price, newdata = airbnb[-train_price_tree,])
+pred_fit_price = predict(fit_price, newdata = airbnb_data[-train_price_tree,])
 
 
 # no pruning
-ctree_price = ctree(price~., airbnb, subset = train_price_tree)
+ctree_price = ctree(price~., airbnb_data, subset = train_price_tree)
 
 #summary(ctree.boston)
 #plot(ctree_price) useless
 
-pred_ctree_price = predict(ctree_price, newdata = airbnb[-train_price_tree,])
+pred_ctree_price = predict(ctree_price, newdata = airbnb_data[-train_price_tree,])
 
 
 # tune over maximum depth, method = "rpart2" (plots Max Tree depth)
 # tune over cp, method = "rpart" (plots Complexity Parameter)
-rpartTune = train(airbnb[,-11], airbnb$price, 
-                   method = "rpart2",
-                   trControl = trainControl(method = "cv", number =10))
+#rpartTune = train(airbnb_data[,-11], airbnb$price, 
+#                   method = "rpart2",
+#                   trControl = trainControl(method = "cv", number =10))
 
 
 plot(rpartTune)
@@ -324,7 +321,7 @@ text(pfit_price, use.n=TRUE, all=TRUE, cex=.8)
 ```
 
 
-```{r LDA QDA}
+``{r LDA QDA}
 set.seed(4)
 
 train_lq = sample(1:dim(airbnb)[1], 15000, replace = FALSE)
@@ -333,9 +330,9 @@ ctrl = trainControl(method = "cv",
                      summaryFunction = twoClassSummary,
                      classProbs = TRUE)
 
-lda.fit = lda(neighbourhood_group ~ ., data = airbnb, subset = train_lq)
+#lda.fit = lda(neighbourhood_group ~ ., data = airbnb, subset = train_lq)
 
-lda.pred = predict(lda.fit, newdata = airbnb[-train_lq,])
+#lda.pred = predict(lda.fit, newdata = airbnb[-train_lq,])
 
 #roc.lda = roc(airbnb$neighbourhood_group[-train_lq], lda.pred$posterior[,2])
 #plot(roc.lda, legacy.axes = TRUE)
@@ -367,7 +364,7 @@ tree.airbnb <- tree(boro ~ ., data = airbnb_tree_train)
 summary(tree.airbnb)
 
 cv.tree.airbnb <- cv.tree(tree.airbnb, FUN = prune.misclass)
-minsize=cv.tree.airbnb$size[which.min(cv.tree.airbnb$dev)]
+minsize=cv.tree.airbnb$size[which.min(cv.tree.airbnb_data$dev)]
 
 prune.tree.airbnb <- prune.misclass(tree.airbnb, best = minsize)
 summary(prune.tree.airbnb)
