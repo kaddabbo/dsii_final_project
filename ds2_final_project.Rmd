@@ -209,6 +209,67 @@ colnames(MSE) = "Test Errors from Each Model"
 MSE
 ```
 Our team applies the shrinking techniques such as Ridge, Lasso, PCR(Principle Component Analysis),PLS(Partial Least Square) into the airbnb data set. The criteria for selecting the best model is the selection of the lowest test error among those of the srinking methods mentioned above. For each model, we found method-specific tuning parameters. The ridge regression with the best tune parameter `r best_lamda1`  has `r test_error2` test error close to `test_error1` of LSE because the tune parameter is close to 0. The Lasso model with the compensation of variable selections for the drawback of ridge regression yields sparse models involving a subset of variables. Although by using lasso, we expected reduced variance at the cost of small increase in bias, its best lamda is `r best_lamda2` and test error is `r test_error3`. After that, PCR was used as another technique of deriving a low dimensional set of features from a large set of variables. The first principal component direction of the data is that along which the observations vary the most. As the result, `r test_error4` of the smaller test error was obtained. Lastly, pls is used as a supervised alternative to PCR whose test error is `r test_error5`, the smallest one. 
+```{r}
+airbnb_data2=airbnb_data%>%
+              dplyr::select(-longitude,-latitude)%>%
+              mutate(room_type = as.numeric(as.factor(room_type)))
+
+
+x = model.matrix(price~.,airbnb_data2)[,-1]
+y = airbnb_data2$price
+featurePlot(x,y)
+
+set.seed(4)
+
+deltas <- rep(NA, 7)
+for (i in 1:7) {
+    fit <- glm(price ~ poly(rating, i), data = airbnb_data2)
+    deltas[i] <- cv.glm(airbnb_data2, fit, K = 10)$delta[1]
+}
+plot(1:7, deltas, xlab = "Degree", ylab = "Test MSE", type = "l")
+delta.min <- which.min(deltas);delta.min 
+points(which.min(deltas), deltas[which.min(deltas)], col = "red", cex = 2, pch = 20)
+
+fit1 <- lm(price ~ rating, data = airbnb_data2)
+fit2 <- lm(price ~ poly(rating, 2), data = airbnb_data2)
+fit3 <- lm(price ~ poly(rating, 3), data = airbnb_data2)
+fit4 <- lm(price ~ poly(rating, 4), data = airbnb_data2)
+fit5 <- lm(price ~ poly(rating, 5), data = airbnb_data2)
+fit6 <- lm(price ~ poly(rating, 6), data = airbnb_data2)
+fit7 <- lm(price ~ poly(rating, 7), data = airbnb_data2)
+#fit1-7 are nested, possible to use anova to test 
+anova(fit1, fit2, fit3, fit4, fit5, fit6, fit7)
+#fit.6 has optimal.
+summary(fit4)
+fit4$df#39695
+
+plot(price ~ rating, data = airbnb_data2, col = "darkgrey")
+price_range <- range(airbnb_data2$rating)
+price.grid <- seq(from = price_range[1], to = price_range[2])
+fit <- lm(price ~ poly(rating, 7), data = airbnb_data2)
+preds <- predict(fit, newdata = list(rating = price.grid))
+lines(price.grid, preds, col = "red", lwd = 2)
+```
+
+```{r Spline}
+rss = rep(NA, 100)
+for (i in 3:100) {
+    fit = lm(price ~ bs(rating, df = i), data = airbnb_data2)
+    rss[i] <- sum(fit$residuals^2)
+}
+plot(3:100, rss[-c(1, 2)], xlab = "Degrees of freedom", ylab = "RSS", type = "l")
+rss
+```
+
+```{r GAM}
+library(gam)
+gam = gam(price ~ s(boro) + s(neighbourhood) + 
+               s(rating) + s(calculated_host_listings_count) + s(number_of_reviews) +
+               s(availability_365), data = airbnb_data2)
+par(mfrow = c(3, 3))
+plot(gam, se=TRUE,col="blue")
+```
+
 
 ```{r price regression tree}
 set.seed(46)
