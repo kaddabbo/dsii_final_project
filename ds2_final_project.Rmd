@@ -31,34 +31,19 @@ library(partykit)
 ```
 
 ```{r clean and tidy data, include = FALSE}
-airbnb_initial = read_csv("./data/nyc_airbnb.zip") 
+airbnb_initial = read_csv("./data/nyc_airbnb.zip")
 
 airbnb_data = airbnb_initial%>%
   clean_names()%>%
   mutate(rating = review_scores_location / 2)%>%
-  dplyr::select(boro = neighbourhood_group, neighbourhood, rating, number_of_reviews, price, room_type, reviews_per_month, availability_365, calculated_host_listings_count, name, latitude, longitude)%>%
-  filter(!is.na(rating),price %in% 30:500)
-
-#why filtering from 30 to 500? 
-#do we need name, lat & long
-#missing minimum nights
+  dplyr::select(id, boro = neighbourhood_group, neighbourhood, rating, reviews_per_month, number_of_reviews, price, room_type, reviews_per_month, availability_365, calculated_host_listings_count, minimum_nights, latitude, longitude)%>%
+  filter(price %in% 30:500)
   
-airbnb_data$boro = as.factor(airbnb_data$boro)
-airbnb_data$neighbourhood = as.factor(airbnb_data$neighbourhood)
-airbnb_data$room_type = as.factor(airbnb_data$room_type)
-airbnb_data = na.omit(airbnb_data)
+airbnb_data$boro = as.numeric(as.factor(airbnb_data$boro))
+airbnb_data$neighbourhood = as.numeric(as.factor(airbnb_data$neighbourhood))
+airbnb_data$room_type = as.numeric(as.factor(airbnb_data$room_type))
 
-
-airbnb = airbnb_initial %>%
-  clean_names() %>%
-  dplyr::select(-name, -host_id, -host_name, -latitude, -longitude, -last_review)
-
-airbnb = airbnb[c(3,4,2,9,5,6,7,8,10,11,1)]
-airbnb[, 3:4][is.na(airbnb[, 3:4])] = 0
-
-airbnb$neighbourhood_group = as.numeric(as.factor(airbnb$neighbourhood_group))
-airbnb$neighbourhood = as.numeric(as.factor(airbnb$neighbourhood))
-airbnb$room_type = as.numeric(as.factor(airbnb$room_type))
+airbnb_data[, 4:5][is.na(airbnb_data[, 4:5])] = 0
 ```
 
 
@@ -89,6 +74,10 @@ airbnb_data %>%
   mutate(neighbourhood = fct_reorder(neighbourhood, n)) %>% 
   plot_ly(x = ~neighbourhood, y = ~n, color = ~neighbourhood, type = "bar")
 
+
+airbnb_data %>% 
+  count(neighbourhood) %>%
+  arrange(desc(n))
 ```
 
 ```{r}
@@ -97,6 +86,8 @@ corr<-airbnb_data%>%
   dplyr::select(-boro , -neighbourhood, -room_type, -name, -latitude, -longitude)
 corrplot(cor(corr), method="square",shade.col=NA, tl.col="black", tl.srt=45)
 
+corr2 = airbnb %<%
+  dplyr::select()
 corrplot(cor(airbnb), method = "square", shade.col = NA)
 ```
 
