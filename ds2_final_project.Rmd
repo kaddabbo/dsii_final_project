@@ -5,8 +5,6 @@ date: "April 19, 2018"
 output: html_document
 ---
 ##clean and tidy the airbnb data
-
-
 ```{r load packages}
 library(tidyverse)
 library(janitor)
