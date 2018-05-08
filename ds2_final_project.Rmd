@@ -31,19 +31,15 @@ library(partykit)
 ```{r clean and tidy data, include = FALSE}
 airbnb_initial = read_csv("./data/nyc_airbnb.zip")
 
-airbnb_initial = airbnb_initial%>%
+airbnb_data = airbnb_initial%>%
   clean_names()%>%
   mutate(rating = review_scores_location / 2)%>%
   dplyr::select(id, boro = neighbourhood_group, neighbourhood, rating, reviews_per_month, number_of_reviews, price, room_type, reviews_per_month, availability_365, calculated_host_listings_count, minimum_nights, latitude, longitude)%>%
-  mutate(room_type = as.factor(airbnb_initial$room_type),
-         boro = as.factor(airbnb_initial$neighbourhood_group)) %>% 
+  mutate(room_type = as.numeric(as.factor(room_type)),
+         boro = as.numeric(as.factor(boro)),
+         neighbourhood = as.numeric(as.factor(neighbourhood))) %>% 
   filter(price %in% 30:500)
-airbnb_initial=na.omit(airbnb_initial)
 
-airbnb_data = airbnb_initial%>%
-  mutate(boro = as.numeric(as.factor(boro)),
-        neighbourhood = as.numeric(as.factor(airbnb_initial$neighbourhood)),
-        as.numeric(as.factor(airbnb_initial$room_type)))
 airbnb_data[, 4:5][is.na(airbnb_data[, 4:5])] = 0
 ```
 
