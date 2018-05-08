@@ -5,10 +5,14 @@ date: "April 19, 2018"
 output: html_document
 ---
 ##clean and tidy the airbnb data
+<<<<<<< HEAD
+```{r load packages}
+=======
 
 
 ```{r load packages, include = FALSE}
 rm(list=ls())
+>>>>>>> f738ea6af05a56b9ad13e6ce08c87aa3cd26466a
 library(tidyverse)
 library(janitor)
 library(stringr)
