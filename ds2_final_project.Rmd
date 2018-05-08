@@ -5,7 +5,14 @@ date: "April 19, 2018"
 output: html_document
 ---
 ##clean and tidy the airbnb data
+<<<<<<< HEAD
 ```{r load packages}
+=======
+
+
+```{r load packages, include = FALSE}
+rm(list=ls())
+>>>>>>> f738ea6af05a56b9ad13e6ce08c87aa3cd26466a
 library(tidyverse)
 library(janitor)
 library(stringr)
@@ -17,68 +24,278 @@ library(caret)
 library(corrplot)
 library(tree)
 library(rpart)
+library(glmnet)
 library(randomForest)
 library(gbm)
 library(adabag)
 library(e1071)
 library(MASS)
-library(caret)
-library(MASS)
-library(corrplot)
+library(pROC)
+library(partykit)
 ```
 
-```{r clean and tidy data}
-airbnb_data = read_csv("./data/nyc_airbnb.zip") %>%
+```{r clean and tidy data, include = FALSE}
+airbnb_initial = read_csv("./data/nyc_airbnb.zip")
+
+airbnb_initial = airbnb_initial%>%
   clean_names()%>%
   mutate(rating = review_scores_location / 2)%>%
-  dplyr::select(boro = neighbourhood_group, neighbourhood, rating, number_of_reviews, price, room_type, reviews_per_month, availability_365, calculated_host_listings_count, name, latitude, longitude)%>%
-  filter(!is.na(rating),price %in% 30:500)
+  dplyr::select(id, boro = neighbourhood_group, neighbourhood, rating, reviews_per_month, number_of_reviews, price, room_type, reviews_per_month, availability_365, calculated_host_listings_count, minimum_nights, latitude, longitude)%>%
+  filter(price %in% 30:500)
   
-
-airbnb_data$boro = as.factor(airbnb_data$boro)
-airbnb_data$neighbourhood = as.factor(airbnb_data$neighbourhood)
-airbnb_data$room_type = as.factor(airbnb_data$room_type)
-airbnb_data = na.omit(airbnb_data)
+airbnb_data = airbnb_initial%>%
+  mutate(boro = as.numeric(as.factor(boro)),
+        neighbourhood = as.numeric(as.factor(airbnb_initial$neighbourhood)),
+        as.numeric(as.factor(airbnb_initial$room_type)))
+airbnb_data[, 4:5][is.na(airbnb_data[, 4:5])] = 0
 ```
 
 
 ```{r some basic plots }
 #plotly scatter plot
 
-airbnb_data %>%
-  mutate(text_label = str_c("Price: $", price, '\nRating: ', rating, '\nName: ', name)) %>% 
+airbnb_initial %>%
+  mutate(text_label = str_c("Price: $", price, '\nRating: ', rating)) %>% 
   plot_ly(x = ~longitude, y = ~latitude, type = "scatter", mode = "markers",
           alpha = 0.5, 
           color = ~price,
           text = ~text_label)
 
-common_neighborhoods =
-  airbnb_data %>% 
+common_neighborhoods = airbnb_initial %>% 
   count(neighbourhood, sort = TRUE) %>% 
   top_n(8) %>% 
-  select(neighbourhood)
+  dplyr::select(neighbourhood)
 
 #neighborhood-price
-inner_join(airbnb_data, common_neighborhoods,
-             by = "neighbourhood") %>% 
+inner_join(airbnb_initial, common_neighborhoods, by = "neighbourhood")%>%
   mutate(neighbourhood = fct_reorder(neighbourhood, price)) %>% 
   plot_ly(y = ~price, color = ~neighbourhood, type = "box",
           colors = "Set2")
-#?
-airbnb_data %>% 
+#frequencty of popular neighborhood
+airbnb_initial %>% 
   count(neighbourhood) %>% 
   mutate(neighbourhood = fct_reorder(neighbourhood, n)) %>% 
   plot_ly(x = ~neighbourhood, y = ~n, color = ~neighbourhood, type = "bar")
 
+
+airbnb_data %>% 
+  count(neighbourhood) %>%
+  arrange(desc(n))
+```
+
+```{r}
 #corplot
 corr<-airbnb_data%>%
-  dplyr::select(-boro , -neighbourhood, -room_type, -name, -latitude, -longitude)
-corrplot(cor(corr), method="shade",shade.col=NA, tl.col="black", tl.srt=45)
+  dplyr::select(-boro , -neighbourhood, -room_type, -latitude, -longitude)
+corrplot(cor(corr), method="square",shade.col=NA, tl.col="black", tl.srt=45)
 
+#error occurs!
+airbnb = airbnb_initial #I cannot find what the datset 'airbnb' is above, so just assign 'airbnb_initial' above into 'airbnb'
+#corr2 = airbnb%<%
+#  dplyr::select()
+#corrplot(cor(airbnb), method = "square", shade.col = NA)
+```
+
+
+```{r Linear}
+numeric_data = airbnb_data%>%
+  dplyr::select(price,everything(),-boro, -neighbourhood, -room_type, -longitude, -latitude)
+
+plot(numeric_data$price)
+featurePlot(x=numeric_data[,2:5],y=numeric_data$price, plot = 'pairs')
+
+#splitting data into train and test
+sample_size=floor(0.75*nrow(numeric_data))
+
+set.seed(1)
+
+sample_air = sample(seq_len(nrow(numeric_data)), size = sample_size)
+train = numeric_data[sample_air, ]
+test = numeric_data[-sample_air, ]
+
+#LSE on the traing data
+ln_model = lm(price~., data=train)
+pred_data = predict(ln_model, test)
+test_error1 = mean((pred_data-test$price)^2)#4777.552
 
 ```
 
-```{r classification tree}
+```{r Ridge}
+#ridge regression
+x_test = model.matrix(price~.,train)[,-1]
+y_test = train$price
+grid_ridge = 10^seq(10.,-5, length = 1000)
+
+ridge_model = glmnet(x_test,y_test,alpha=0,lambda = grid_ridge)
+cv.out = cv.glmnet(x_test,y_test,alpha=0, lambda = grid_ridge,
+                   type.measure = "mse")
+plot(cv.out)
+best_lambda1 = round(cv.out$lambda.min,3);best_lambda1#0.178
+
+best_ridge_mod = glmnet(x_test,y_test,alpha=0,lambda = best_lambda1)
+
+reg_pred=predict(best_ridge_mod ,s=best_lambda1,newx=x_test)
+
+test_error2= round(mean((reg_pred-y_test)^2),3);test_error2#4859.771
+```
+
+
+```{r Lasso}
+set.seed(2)
+
+grid_lasso = exp(seq(1,-8,length=100))
+lasso_mod = glmnet(x_test,y_test,alpha=1,lambda= grid_lasso)
+
+cv.out2 = cv.glmnet(x_test,y_test,alpha=1,lambda= grid_lasso)
+best_lambda2 = round(cv.out2$lambda.min, 3);best_lambda2#0.28
+
+plot(cv.out2)
+
+pred_lasso = predict(lasso_mod ,s=best_lambda2, newx=x_test)
+test_error3 = mean((pred_lasso-y_test)^2);test_error3#4860.522
+
+
+coefficients = predict(lasso_mod, s=best_lambda2, type="coefficients") %>%
+                as.matrix()
+non_zero_coeff = coefficients[coefficients[,1] != 0,]
+non_zero_coeff%>% knitr::kable()
+```
+
+
+```{r PCR}
+library(pls)
+set.seed(3)
+# pcr
+# matrix of predictors
+x = model.matrix(price~.,airbnb_data)[,-1]
+# vector of response
+y = airbnb_data$price
+
+# create traing set
+trRows <- createDataPartition(y,
+                              p = .50,
+                              list = F)
+
+# implementation using package pls
+# pcr
+pcr.fit = pcr(price~., 
+              data = airbnb_data,
+              subset = trRows,
+              scale = TRUE, # standardize the predictors!!
+              validation = "CV")
+summary(pcr.fit)
+validationplot(pcr.fit,val.type="MSEP")
+# test set performance
+pcr.pred = predict(pcr.fit,x[-trRows,],ncomp=5)
+test_error4 = round(mean((pcr.pred-y[-trRows])^2),3);test_error4 #4564.748
+
+```
+
+```{r PLS}
+# pls
+pls.fit = plsr(price~., 
+               data=airbnb_data, 
+               scale=TRUE,  
+               subset = trRows,
+               validation ="CV")
+summary(pls.fit)
+validationplot(pls.fit,val.type="MSEP")
+# test set performance
+pls.pred = predict(pls.fit,x[-trRows,],ncomp=2)
+test_error5 = round(mean((pls.pred-y[-trRows])^2),3);test_error5# 4209.287
+```
+
+
+```{r MSE}
+MSE=matrix(c(test_error1,test_error2,test_error3,test_error4, test_error5))
+rownames(MSE) <- c("Linear", "Ridge","Lasso", "PCR", "PLS") 
+colnames(MSE) = "Test Errors from Each Model"
+MSE
+```
+Our team applies the shrinking techniques such as Ridge, Lasso, PCR(Principle Component Analysis),PLS(Partial Least Square) into the airbnb data set. The criteria for selecting the best model is the selection of the lowest test error among those of the srinking methods mentioned above. For each model, we found method-specific tuning parameters. The ridge regression with the best tune parameter `r best_lamda1`  has `r test_error2` test error close to `test_error1` of LSE because the tune parameter is close to 0. The Lasso model with the compensation of variable selections for the drawback of ridge regression yields sparse models involving a subset of variables. Although by using lasso, we expected reduced variance at the cost of small increase in bias, its best lamda is `r best_lamda2` and test error is `r test_error3`. After that, PCR was used as another technique of deriving a low dimensional set of features from a large set of variables. The first principal component direction of the data is that along which the observations vary the most. As the result, `r test_error4` of the smaller test error was obtained. Lastly, pls is used as a supervised alternative to PCR whose test error is `r test_error5`, the smallest one. 
+
+```{r price regression tree}
+set.seed(46)
+
+train_price_tree = sample(1:nrow(airbnb), nrow(airbnb)/2)
+
+# grow tree 
+fit_price = rpart(price ~ ., data = airbnb, subset = train_price_tree)
+
+printcp(fit_price) # display the results 
+plotcp(fit_price) # visualize cross-validation results 
+summary(fit_price) # detailed summary of splits
+
+plot(as.party(fit_price))
+
+pred_fit_price = predict(fit_price, newdata = airbnb[-train_price_tree,])
+
+
+# no pruning
+ctree_price = ctree(price~., airbnb, subset = train_price_tree)
+
+#summary(ctree.boston)
+#plot(ctree_price) useless
+
+pred_ctree_price = predict(ctree_price, newdata = airbnb[-train_price_tree,])
+
+
+# tune over maximum depth, method = "rpart2" (plots Max Tree depth)
+# tune over cp, method = "rpart" (plots Complexity Parameter)
+rpartTune = train(airbnb[,-11], airbnb$price, 
+                   method = "rpart2",
+                   trControl = trainControl(method = "cv", number =10))
+
+
+plot(rpartTune)
+
+
+# create additional plots 
+# two plots on one page par(mfrow=c(1,2))
+rsq.rpart(fit_price) # visualize cross-validation results  	
+
+# plot tree 
+plot(fit_price, uniform=TRUE, main="Regression Tree for Price ")
+text(fit_price, use.n=TRUE, all=TRUE, cex=.8)
+
+# prune the tree 
+pfit_price = prune(fit_price, cp=0.010460) # from cptable   
+
+# plot the pruned tree 
+plot(pfit_price, uniform=TRUE, main="Pruned Regression Tree for Price")
+text(pfit_price, use.n=TRUE, all=TRUE, cex=.8)
+```
+
+
+```{r LDA QDA}
+set.seed(4)
+
+train_lq = sample(1:dim(airbnb)[1], 15000, replace = FALSE)
+
+ctrl = trainControl(method = "cv",
+                     summaryFunction = twoClassSummary,
+                     classProbs = TRUE)
+
+lda.fit = lda(neighbourhood_group ~ ., data = airbnb, subset = train_lq)
+
+lda.pred = predict(lda.fit, newdata = airbnb[-train_lq,])
+
+#roc.lda = roc(airbnb$neighbourhood_group[-train_lq], lda.pred$posterior[,2])
+#plot(roc.lda, legacy.axes = TRUE)
+
+
+#ldafit1 = train(x = airbnb[,-1],
+#                 y = airbnb$neighbourhood_group,
+#                 method = "lda",
+#                 preProc = c("center","scale"),
+#                 metric = "ROC",
+#                 trControl = ctrl)
+
+
+#qda.fit = qda(price ~ Lag1+Lag2, data = airbnb ,subset = train_ql)
+```
+
+```{r boro classification tree}
 airbnb_tree_data = dplyr::select(airbnb_data, -neighbourhood, -reviews_per_month,- name, -latitude, -longitude)
 
 set.seed(123)
@@ -149,79 +366,3 @@ summary(boost.airbnb)
 compare_df = data.frame(Boosting_MSE = boost.mse, Random_forest_MSE =rf.mse, Bagging_MSE = bag.mse, Decision_trees_MSE = basic.mse)
 compare_df
 ```
-
-
-
-####???????
-```{r}
-pcr.data=airbnb_data%>%
-  select(-name, -boro , -neighbourhood, -room_type, -latitude, -longitude, price, calculated_host_listings_count, number_of_reviews, reviews_per_month, availability_365)
-
-pr.out <- prcomp(pcr.data, scale=TRUE)
-names(pr.out)
-
-pr.out$center
-# apply(USArrests, 2, mean)
-
-pr.out$scale
-# apply(USArrests, 2, sd)
-
-pr.out$rotation
-
-
-dim(pr.out$x)
-head(pr.out$x)
-# The kth column is the kth PC score vector (z)
-
-biplot(pr.out, scale=0)
-# scale=0: the arrows are scaled to represent the loadings
-
-
-# The PCs are only unique up to a sign change
-pr.out$rotation=-pr.out$rotation
-pr.out$x=-pr.out$x
-biplot(pr.out, scale=0)
-
-
-pr.out$sdev
-# the standard deviation of each PC
-
-pr.var=pr.out$sdev^2
-pr.var
-# variance explained by each PC
-
-
-pve=pr.var/sum(pr.var)
-pve
-# PVE
-
-plot(pve, xlab="Principal Component", ylab="Proportion of Variance Explained", ylim=c(0,1),type='b')
-plot(cumsum(pve), xlab="Principal Component", ylab="Cumulative Proportion of Variance Explained", ylim=c(0,1),type='b')
-a=c(1,2,8,-3)
-cumsum(a)
-```
-
-```{r}
-
-num.data=airbnb_data%>%
-  select(price, reviews_per_month)
-
-km.out <- kmeans(num.data,2,nstart=20)
-# trying several random starts (nstart> 1) is often recommended
-km.out$cluster
-plot(num.data, col=(km.out$cluster+1), 
-     main="K-Means Clustering Results with K=2", 
-     xlab="", ylab="", pch=20, cex=2)
-
-
-km.out <- kmeans(x,3,nstart=20)
-plot(num.data, col=(km.out$cluster+1), 
-     main="K-Means Clustering Results with K=3", 
-     xlab="", ylab="", pch=20, cex=2)
-
-# Total within-cluster sum of squares
-
-km.out=kmeans(x,3,nstart=20)
-km.out$tot.withinss
-```
-
