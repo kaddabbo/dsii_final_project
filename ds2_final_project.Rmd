@@ -41,8 +41,8 @@ airbnb_initial = airbnb_initial%>%
   
 airbnb_data = airbnb_initial%>%
   mutate(boro = as.numeric(as.factor(boro)),
-        neighbourhood = as.numeric(as.factor(airbnb_data$neighbourhood)),
-        as.numeric(as.factor(airbnb_data$room_type)))
+        neighbourhood = as.numeric(as.factor(airbnb_initial$neighbourhood)),
+        as.numeric(as.factor(airbnb_initial$room_type)))
 airbnb_data[, 4:5][is.na(airbnb_data[, 4:5])] = 0
 ```
 
@@ -137,7 +137,7 @@ test_error2=
 mean((reg_pred-y_test)^2);test_error2
 ```
 
-
+Our team applies the shrinking techniques such as Ridge, Lasso, PCR(Principle Component Analysis),PLS(Partial Least Square) into the airbnb data set. The criteria for selecting the best model is the selection of the lowest test error among those of the srinking methods mentioned above. For each model, we found method-specific tuning parameters. Ridge regression 
 
 ```{r Lasso}
 set.seed(2)
