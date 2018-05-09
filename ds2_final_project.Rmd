@@ -38,13 +38,12 @@ airbnb_initial = airbnb%>%
   clean_names()%>%
   mutate(rating = review_scores_location / 2)%>%
   dplyr::select(id, boro = neighbourhood_group, neighbourhood, rating, reviews_per_month, number_of_reviews, price, room_type, reviews_per_month, availability_365, calculated_host_listings_count, minimum_nights, latitude, longitude) %>% 
-  filter(price %in% 30:500)
+  filter(price %in% 30:500) 
 
 airbnb_data = airbnb_initial %>%
   mutate(room_type = as.numeric(as.factor(room_type)),
          boro = as.numeric(as.factor(boro)),
          neighbourhood = as.numeric(as.factor(neighbourhood))) 
-
 airbnb_data[, 4:5][is.na(airbnb_data[, 4:5])] = 0
 ```
 
@@ -267,86 +266,51 @@ plot(gam, se=TRUE,col="blue")
 
 Using 6 predictors, I fit a GAM where price has approximately linear positive associations with availability_365 and negative association with number of reviews. The plot also shows that the low rating has lower prices except for '0' rating, which seem to be quadratic. The higher rating is, the higher price is. In Manhattan, price is much higher than that of the other boroughs. In addition, it seems that the association between price and neighbourhood has the fourth degree polynomial.
 
-``{r price regression tree}
+```{r price regression tree}
 set.seed(46)
 
-train_price_tree = sample(1:nrow(airbnb_data), nrow(airbnb_data)/2)
+airbnb_an = airbnb_data %>%
+  dplyr::select(-id, -neighbourhood, -latitude, -longitude) 
+train_price_tree = sample(1:nrow(airbnb_an), nrow(airbnb_an)/2)
+train_pt = airbnb_an[train_price_tree,]
+test_pt = airbnb_an[-train_price_tree,]
 
-# grow tree 
-fit_price = rpart(price ~ ., data = airbnb_data, subset = train_price_tree)
+fit_price = rpart(price ~ ., data = train_pt)
+printcp(fit_price)
 
-printcp(fit_price) # display the results 
-plotcp(fit_price) # visualize cross-validation results 
-summary(fit_price) # detailed summary of splits
-#HUGE
+#summary(fit_price) # detailed summary of splits
 
-plot(as.party(fit_price))
+prune_fit_price = prune(fit_price, cp = 0.013153)
+#summary(prune_fit_price)
 
-pred_fit_price = predict(fit_price, newdata = airbnb_data[-train_price_tree,])
+pred_fit_price = predict(prune_fit_price, newdata = test_pt)
 
-
-# no pruning
-ctree_price = ctree(price~., airbnb_data, subset = train_price_tree)
-
-#summary(ctree.boston)
-#plot(ctree_price) useless
-
-pred_ctree_price = predict(ctree_price, newdata = airbnb_data[-train_price_tree,])
-
-
-# tune over maximum depth, method = "rpart2" (plots Max Tree depth)
-# tune over cp, method = "rpart" (plots Complexity Parameter)
-#rpartTune = train(airbnb_data[,-11], airbnb$price, 
-#                   method = "rpart2",
-#                   trControl = trainControl(method = "cv", number =10))
-
-
-plot(rpartTune)
-
-
-# create additional plots 
-# two plots on one page par(mfrow=c(1,2))
-rsq.rpart(fit_price) # visualize cross-validation results  	
-
-# plot tree 
-plot(fit_price, uniform=TRUE, main="Regression Tree for Price ")
-text(fit_price, use.n=TRUE, all=TRUE, cex=.8)
-
-# prune the tree 
-pfit_price = prune(fit_price, cp=0.010460) # from cptable   
-
-# plot the pruned tree 
-plot(pfit_price, uniform=TRUE, main="Pruned Regression Tree for Price")
-text(pfit_price, use.n=TRUE, all=TRUE, cex=.8)
+price_tree_mse = mean((pred_fit_price - test_pt$price)^2)
+price_tree_mse
 ```
 
 
-``{r LDA QDA}
+```{r LDA}
 set.seed(4)
 
-train_lq = sample(1:dim(airbnb)[1], 15000, replace = FALSE)
+train_lq = sample(1:dim(airbnb_an)[1], 15000, replace = FALSE)
+lda_train = airbnb_an[train_lq,]
+lda_test = airbnb_an[-train_lq,]
 
-ctrl = trainControl(method = "cv",
-                     summaryFunction = twoClassSummary,
-                     classProbs = TRUE)
+lda.fit = lda(boro ~ ., data = lda_train)
 
-#lda.fit = lda(neighbourhood_group ~ ., data = airbnb, subset = train_lq)
+lda.pred = predict(lda.fit, newdata = lda_test)
 
-#lda.pred = predict(lda.fit, newdata = airbnb[-train_lq,])
-
-#roc.lda = roc(airbnb$neighbourhood_group[-train_lq], lda.pred$posterior[,2])
-#plot(roc.lda, legacy.axes = TRUE)
+lda_test_error = mean(lda.pred$class == lda_test$boro)
+lda_test_error #0.5699
 
 
-#ldafit1 = train(x = airbnb[,-1],
-#                 y = airbnb$neighbourhood_group,
-#                 method = "lda",
-#                 preProc = c("center","scale"),
-#                 metric = "ROC",
-#                 trControl = ctrl)
+qda.fit = qda(boro ~ ., data = lda_train)
 
+qda.pred = predict(qda.fit, data = lda_test)
 
-#qda.fit = qda(price ~ Lag1+Lag2, data = airbnb ,subset = train_ql)
+#qda_test_error = mean(qda.pred$class == lda_test$boro)
+#need error 
 ```
 
 ```{r boro classification tree}
