@@ -37,8 +37,12 @@ airbnb = read_csv("./data/nyc_airbnb.zip")
 airbnb_initial = airbnb%>%
   clean_names()%>%
   mutate(rating = review_scores_location / 2)%>%
-  dplyr::select(id, boro = neighbourhood_group, neighbourhood, rating, reviews_per_month, number_of_reviews, price, room_type, reviews_per_month, availability_365, calculated_host_listings_count, minimum_nights, latitude, longitude) %>% 
+  dplyr::select(boro = neighbourhood_group, neighbourhood, rating, reviews_per_month, number_of_reviews, price, room_type, reviews_per_month, availability_365, calculated_host_listings_count, minimum_nights, latitude, longitude) %>% 
   filter(price %in% 30:500) 
+airbnb_initial$boro=as.factor(airbnb_initial$boro)
+airbnb_initial$room_type=as.factor(airbnb_initial$room_type)
+airbnb_initial=na.omit(airbnb_initial)
+
 
 airbnb_data = airbnb_initial %>%
   mutate(room_type = as.numeric(as.factor(room_type)),
@@ -328,7 +332,7 @@ tree.airbnb <- tree(boro ~ ., data = airbnb_tree_train)
 summary(tree.airbnb)
 
 cv.tree.airbnb <- cv.tree(tree.airbnb, FUN = prune.misclass)
-minsize=cv.tree.airbnb$size[which.min(cv.tree.airbnb_data$dev)]
+minsize=cv.tree.airbnb$size[which.min(cv.tree.airbnb$dev)]
 
 prune.tree.airbnb <- prune.misclass(tree.airbnb, best = minsize)
 summary(prune.tree.airbnb)
@@ -352,11 +356,11 @@ pred.bag.airbnb <- predict(bag.airbnb, newdata = airbnb_tree_test)
 table(pred.bag.airbnb, airbnb_tree_test$boro )
 bag.mse=mean(pred.bag.airbnb!= airbnb_tree_test$boro )
 bag.mse
-#0.4122854 is test error.
+#0.434447 is test error.
 varImpPlot(bag.airbnb)
 #price, room type and availability is important
 ```
-Later on, we want to get a more powerful model with improved performance of simple pruned classification tree model. So we use bagging, which instead of fitting the model on one sample of the population, several models are fitted on different samples (with replacement) of the population. Then, these models are aggregated by using their average, weighted average or a voting system (mainly for classification). test error blahblahblah importance blahblahblah...
+Later on, we want to get a more powerful model with improved performance of simple pruned classification tree model. So we use bagging, which instead of fitting the model on one sample of the population, several models are fitted on different samples (with replacement) of the population. Then, these models are aggregated by using their average, weighted average or a voting system (mainly for classification). test error 0.434447 importance blahblahblah...
 
 
 ```{r random forest}
@@ -365,7 +369,7 @@ pred.rf.airbnb <- predict(rf.airbnb, newdata = airbnb_tree_test)
 table(pred.rf.airbnb, airbnb_tree_test$boro )
 rf.mse=mean(pred.rf.airbnb!= airbnb_tree_test$boro )
 rf.mse
-#0.4082923 test error
+#0.4293225 test error
 varImpPlot(rf.airbnb)
 ##price and availability is important
 ```
@@ -379,8 +383,8 @@ yhat.boost = predict(boost.airbnb, newdata = airbnb_tree_test,
 n.trees = 5000, type = "response")
 pred.boost.airbnb <- ifelse(yhat.boost > 0.5, 1, 0)
 table(pred.boost.airbnb, airbnb_tree_test$boro)
-boost.mse = (2250 + 2493)/(2250 + 5706 + 2493 + 4577)
-#(2250 + 2493)/(2250 + 5706 + 2493 + 4577) =  0.315652   test error
+boost.mse = (2259 + 2491)/(2259 + 5697 + 2491 + 4579)
+#(2259 + 2491)/(2259 + 5697 + 2491 + 4579) =  0.315652   test error
 summary(boost.airbnb)
 #price is important.And room type, rating and availability are also important.
 ```
@@ -415,12 +419,46 @@ mean(airbnb_svm_test$boro != test.pred)
 ```
 Support Vector Machines (SVM) is a data classification method that separates data using hyperplanes and is very useful to data whose distribution is unknown. test error blahblahblah importance blahblahblah...
 
-```{r}
+```{r tune svm linear}
+set.seed(123)
+n = nrow(airbnb_svm_train)
+trainIndex = sample(1:n, size = round(0.01*n), replace=FALSE)
+airbnb_svm_sample = airbnb_svm_train[trainIndex ,]
+airbnb_svm_sample_test = airbnb_svm_train[-trainIndex, ]
+airbnb_svm_sample$boro=as.factor(airbnb_svm_sample$boro)
+airbnb_svm_sample$room_type=as.factor(airbnb_svm_sample$room_type)
+airbnb_svm_sample_test$boro=as.factor(airbnb_svm_sample_test$boro)
+airbnb_svm_sample_test$room_type=as.factor(airbnb_svm_sample_test$room_type)
 set.seed(5)
-tune.out <- tune(svm, boro ~ ., data= airbnb_svm_train, 
+tune.out <- tune(svm, boro ~ ., data= airbnb_svm_sample, 
                  kernel="linear",
                  ranges=list(cost=c(0.01,0.1,1,10,100),
                           gamma=c(0.001,0.01,0.1,0.5,1) ))
 summary(tune.out)
+tune.out$best.model
+train.tune.pred <- predict(tune.out$best.model, 
+                         newdata = airbnb_svm_sample)
+test.tune.pred <- predict(tune.out$best.model, 
+                         newdata = airbnb_svm_sample_test)
+
+mean(airbnb_svm_sample$boro != train.tune.pred)
+mean(airbnb_svm_sample_test$boro != test.tune.pred)
 ```
+For futher study, we tune the parameter of svm model with linear type.The optimal cost is 0.01 and the gamma is 0.001. And we got the a train error of 0.5133333 and test error of 0.5274939.
+```{r svm radial}
+set.seed(6)
+tune.out1 <- tune(svm, boro ~ ., data=airbnb_svm_sample, 
+                 kernel="radial",
+                 ranges=list(cost=c(0.1,1,10,100),
+                          gamma=c(0.001,0.01,0.1,0.5,1) ))
+summary(tune.out1)
+tune.out1$best.model
+train.tune.pred1 <- predict(tune.out1$best.model, 
+                         newdata = airbnb_svm_sample)
+test.tune.pred1 <- predict(tune.out1$best.model, 
+                         newdata = airbnb_svm_sample_test)
+mean(airbnb_svm_sample$boro != train.tune.pred1)
+mean(airbnb_svm_sample_test$boro != test.tune.pred1)
+```
+For futher study, we tune the parameter of svm model with radial type. The optimal cost is 100 and gamma is 0.5. And we got the a train error of 0 and test error of 0.5632563.
 
