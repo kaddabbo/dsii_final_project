@@ -384,7 +384,7 @@ table(predict.pruned.tree, airbnb_tree_test$boro)
 basic.mse=mean(predict.pruned.tree != airbnb_tree_test$boro)
 basic.mse
 ```
-the optimal tree size equals to 3, the training data error rate is 0.4531. Use test dataset to predict, the error rate is 0.4472914.  
+For borough, we can't apply Ridge/Lasso, instead we adopt Classification tree to have an elementary analysis of the relationship between the borough and other covariates. We establish a model with pruned parameter which we obtain from the cross-validation, for the best tree size. And the optimal tree size equals to 3, the training data error rate is 0.4531. Use test dataset to predict, the error rate is 0.4472914.  
 
 ```{r bagging}
 bag.airbnb <- randomForest(boro ~ ., data = airbnb_tree_train, mtry = 10, ntree = 500, importance = TRUE)
@@ -396,6 +396,8 @@ bag.mse
 varImpPlot(bag.airbnb)
 #price, room type and availability is important
 ```
+Later on, we want to get a more powerful model with improved performance of simple pruned classification tree model. So we use bagging, which instead of fitting the model on one sample of the population, several models are fitted on different samples (with replacement) of the population. Then, these models are aggregated by using their average, weighted average or a voting system (mainly for classification). test error blahblahblah importance blahblahblah...
+
 
 ```{r random forest}
 rf.airbnb <- randomForest(boro ~ ., data = airbnb_tree_train, mtry = 5, ntree = 500, importance = TRUE)
@@ -407,6 +409,7 @@ rf.mse
 varImpPlot(rf.airbnb)
 ##price and availability is important
 ```
+Random forest has a advantage of balancing the Biase-Variance Tradeoff and creates a more strong model. And random forest is commonly used to improve the predictive performance of Decision Trees by reducing the variance in the Trees by averaging them. test error blahblahblah importance blahblahblah...
 
 ```{r boost}
 airbnb_tree_train$boro <- as.numeric(airbnb_tree_train$boro == "Manhattan") 
@@ -421,6 +424,8 @@ boost.mse = (2250 + 2493)/(2250 + 5706 + 2493 + 4577)
 summary(boost.airbnb)
 #price is important.And room type, rating and availability are also important.
 ```
+Bagging the various models which are generated are independent of each other and have equal weightage .Whereas Boosting is a sequential process in which each next model which is generated is added so as to improve a bit from the previous model.Simply saying each of the model that is added to mix is added so as to improve on the performance of the previous collection of models.In Boosting we do weighted averaging. Boost can be more efficient than bagging, so we use boost here. test error blahblahblah importance blahblahblah...
+
 
 ```{r compare}
 compare_df = data.frame(Boosting_MSE = boost.mse, Random_forest_MSE =rf.mse, Bagging_MSE = bag.mse, Decision_trees_MSE = basic.mse)
@@ -446,6 +451,16 @@ summary(svm.linear)
 test.pred <- predict(svm.linear, newdata = airbnb_svm_test)
 table(airbnb_svm_test$boro, test.pred)
 mean(airbnb_svm_test$boro != test.pred)
-#0.4257287 is the test error rate
+#for svm linear model, 0.4257287 is the test error rate
+```
+Support Vector Machines (SVM) is a data classification method that separates data using hyperplanes and is very useful to data whose distribution is unknown. test error blahblahblah importance blahblahblah...
+
+```{r}
+set.seed(5)
+tune.out <- tune(svm, boro ~ ., data= airbnb_svm_train, 
+                 kernel="linear",
+                 ranges=list(cost=c(0.01,0.1,1,10,100),
+                          gamma=c(0.001,0.01,0.1,0.5,1) ))
+summary(tune.out)
 ```
 
